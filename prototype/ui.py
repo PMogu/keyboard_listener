@@ -8,4 +8,4 @@ def start_ui(counter):
         print("Start time: ", counter.get_start_time())
         print("Key count: ", counter.get_count())
 
-        time.sleep(0.5)
+        time.sleep(1)

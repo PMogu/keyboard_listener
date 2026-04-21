@@ -1,7 +1,7 @@
 from model import KeyCounter
 from keyboard_listener import start_listener
 from ui import start_ui
-from datetime import datetime
+from datetime import datetime, timedelta
 import threading
 import time
 
@@ -20,9 +20,16 @@ def write_log(counter, filename="keycounter_log.txt"):
     with open(filename, "a", encoding="utf-8") as f:
         f.write(line)
 
-def auto_log(counter, interval=60, filename="keycounter_log.txt"):
+def auto_log(counter, filename="keycounter_log.txt"):
     while True:
-        time.sleep(interval)
+        now = datetime.now()
+        next_noon = now.replace(hour=21, minute=0, second=0, microsecond=0)
+        if now >= next_noon:
+            next_noon = next_noon + timedelta(days=1)
+
+        sleep_seconds = (next_noon - now).total_seconds()
+        time.sleep(sleep_seconds)
+
         write_log(counter, filename="keycounter_log.txt")
 
 def main():
@@ -30,7 +37,7 @@ def main():
     listener = start_listener(counter)
     autosave_thread = threading.Thread(
         target=auto_log,
-        args=(counter, 86400, "keycounter_log.txt"),
+        args=(counter,),
         daemon=True,
     )
     autosave_thread.start()

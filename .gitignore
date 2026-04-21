@@ -1,0 +1,9 @@
+.DS_Store
+*.pyc
+**/__pycache__/
+backend/.venv/
+backend/*.db
+backend/.pytest_cache/
+macos-app/.build/
+macos-app/.swiftpm/
+test_keyboard_listener.db
