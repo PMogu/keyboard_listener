@@ -6,4 +6,5 @@ backend/*.db
 backend/.pytest_cache/
 macos-app/.build/
 macos-app/.swiftpm/
+macos-app/dist/
 test_keyboard_listener.db

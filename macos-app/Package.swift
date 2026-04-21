@@ -20,5 +20,8 @@ let package = Package(
                 .linkedFramework("ApplicationServices"),
             ]
         ),
+    ],
+    swiftLanguageModes: [
+        .v5,
     ]
 )

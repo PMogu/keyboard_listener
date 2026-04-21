@@ -7,6 +7,7 @@ final class ConfigStore {
         static let deviceID = "keyboardListener.deviceID"
         static let deviceToken = "keyboardListener.deviceToken"
         static let lastSyncedAt = "keyboardListener.lastSyncedAt"
+        static let startListeningOnLaunch = "keyboardListener.startListeningOnLaunch"
     }
 
     private let defaults: UserDefaults
@@ -21,7 +22,8 @@ final class ConfigStore {
             bootstrapSecret: defaults.string(forKey: Keys.bootstrapSecret) ?? "",
             deviceID: defaults.string(forKey: Keys.deviceID),
             deviceToken: defaults.string(forKey: Keys.deviceToken),
-            deviceName: Host.current().localizedName ?? "Mac"
+            deviceName: Host.current().localizedName ?? "Mac",
+            startListeningOnLaunch: defaults.object(forKey: Keys.startListeningOnLaunch) as? Bool ?? true
         )
     }
 
@@ -30,6 +32,7 @@ final class ConfigStore {
         defaults.set(config.bootstrapSecret, forKey: Keys.bootstrapSecret)
         defaults.set(config.deviceID, forKey: Keys.deviceID)
         defaults.set(config.deviceToken, forKey: Keys.deviceToken)
+        defaults.set(config.startListeningOnLaunch, forKey: Keys.startListeningOnLaunch)
     }
 
     func setDeviceCredentials(deviceID: String, token: String) {

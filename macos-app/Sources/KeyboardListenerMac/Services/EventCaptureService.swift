@@ -2,54 +2,22 @@ import AppKit
 import ApplicationServices
 import Foundation
 
-@MainActor
 final class EventCaptureService {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var handler: ((KeyEventRecord) -> Void)?
+    var onEvent: ((KeyEventRecord) -> Void)?
 
-    func start(handler: @escaping (KeyEventRecord) -> Void) {
+    func start() {
         stop()
-        self.handler = handler
 
-        let eventMask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.flagsChanged.rawValue)
-        let callback: CGEventTapCallBack = { _, type, event, userInfo in
-            guard let userInfo else {
-                return Unmanaged.passUnretained(event)
-            }
-
-            let service = Unmanaged<EventCaptureService>.fromOpaque(userInfo).takeUnretainedValue()
-            if type == .tapDisabledByTimeout, let eventTap = service.eventTap {
-                CGEvent.tapEnable(tap: eventTap, enable: true)
-                return Unmanaged.passUnretained(event)
-            }
-
-            guard type == .keyDown || type == .flagsChanged else {
-                return Unmanaged.passUnretained(event)
-            }
-
-            let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
-            let flags = Int(event.flags.rawValue)
-            let frontmostApp = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-            let record = KeyEventRecord(
-                id: UUID().uuidString.lowercased(),
-                occurredAt: .now,
-                keyCode: keyCode,
-                modifierFlags: flags,
-                eventType: type == .keyDown ? "keyDown" : "flagsChanged",
-                sourceApp: frontmostApp
-            )
-            service.handler?(record)
-            return Unmanaged.passUnretained(event)
-        }
-
+        let eventMask = 1 << CGEventType.keyDown.rawValue
         let pointer = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
         eventTap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: CGEventMask(eventMask),
-            callback: callback,
+            callback: Self.eventTapCallback,
             userInfo: pointer
         )
 
@@ -69,6 +37,77 @@ final class EventCaptureService {
         }
         runLoopSource = nil
         eventTap = nil
-        handler = nil
+    }
+
+    private static let eventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
+        guard let userInfo else {
+            return Unmanaged.passUnretained(event)
+        }
+
+        let service = Unmanaged<EventCaptureService>.fromOpaque(userInfo).takeUnretainedValue()
+        if type == .tapDisabledByTimeout, let eventTap = service.eventTap {
+            CGEvent.tapEnable(tap: eventTap, enable: true)
+            return Unmanaged.passUnretained(event)
+        }
+
+        guard type == .keyDown else {
+            return Unmanaged.passUnretained(event)
+        }
+
+        guard service.shouldRecordTextChangingKey(event: event) else {
+            return Unmanaged.passUnretained(event)
+        }
+
+        let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
+        let flags = Int(event.flags.rawValue)
+        let frontmostApp = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        let record = KeyEventRecord(
+            id: UUID().uuidString.lowercased(),
+            occurredAt: .now,
+            keyCode: keyCode,
+            modifierFlags: flags,
+            eventType: "keyDown",
+            sourceApp: frontmostApp
+        )
+        service.onEvent?(record)
+        return Unmanaged.passUnretained(event)
+    }
+
+    private func shouldRecordTextChangingKey(event: CGEvent) -> Bool {
+        let flags = event.flags
+        if flags.contains(.maskCommand) || flags.contains(.maskControl) || flags.contains(.maskSecondaryFn) {
+            return false
+        }
+
+        let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
+
+        // Backspace removes text even though it is not printable.
+        if keyCode == 51 {
+            return true
+        }
+
+        // Exclude known non-text navigation/control keys.
+        if keyCode == 48 || keyCode == 53 {
+            return false
+        }
+
+        guard let nsEvent = NSEvent(cgEvent: event) else {
+            return false
+        }
+
+        let characters = nsEvent.charactersIgnoringModifiers ?? nsEvent.characters ?? ""
+        guard characters.count == 1, let scalar = characters.unicodeScalars.first else {
+            return false
+        }
+
+        if CharacterSet.newlines.contains(scalar) || CharacterSet.whitespaces.contains(scalar) {
+            return true
+        }
+
+        if CharacterSet.alphanumerics.contains(scalar) || CharacterSet.punctuationCharacters.contains(scalar) {
+            return true
+        }
+
+        return CharacterSet.symbols.contains(scalar)
     }
 }

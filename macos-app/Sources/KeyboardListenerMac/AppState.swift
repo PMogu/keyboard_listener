@@ -1,4 +1,5 @@
 import Foundation
+import ServiceManagement
 
 @MainActor
 final class AppState: ObservableObject {
@@ -12,6 +13,8 @@ final class AppState: ObservableObject {
     @Published var syncStatus = "Idle"
     @Published var lastError: String?
     @Published var config: AppConfig
+    @Published var launchAtLoginEnabled = false
+    @Published var launchAtLoginSupported = false
 
     private let configStore: ConfigStore
     private let localStore: LocalStore
@@ -33,7 +36,11 @@ final class AppState: ObservableObject {
         }
 
         refreshSnapshot()
+        refreshLaunchAtLoginStatus()
         scheduleSync()
+        if config.startListeningOnLaunch {
+            startListening()
+        }
     }
 
     func toggleListening() {
@@ -49,17 +56,19 @@ final class AppState: ObservableObject {
             return
         }
 
-        eventCaptureService.start { [weak self] record in
+        eventCaptureService.onEvent = { [weak self] record in
             Task { @MainActor in
                 self?.persist(event: record)
             }
         }
+        eventCaptureService.start()
         isListening = true
         syncStatus = "Listening"
     }
 
     func pauseListening() {
         eventCaptureService.stop()
+        eventCaptureService.onEvent = nil
         isListening = false
         syncStatus = "Paused"
     }
@@ -71,8 +80,33 @@ final class AppState: ObservableObject {
         syncStatus = "Configuration saved"
     }
 
+    func setStartListeningOnLaunch(_ enabled: Bool) {
+        config.startListeningOnLaunch = enabled
+        configStore.save(config: config)
+        syncStatus = enabled ? "Will start listening on launch" : "Will stay paused on launch"
+    }
+
     func refreshPermissions() {
         hasAccessibilityAccess = AccessibilityService.isTrusted()
+    }
+
+    func setLaunchAtLoginEnabled(_ enabled: Bool) {
+        guard launchAtLoginSupported else {
+            lastError = "Open at Login is available from the packaged .app build."
+            return
+        }
+
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            refreshLaunchAtLoginStatus()
+        } catch {
+            launchAtLoginEnabled = false
+            lastError = error.localizedDescription
+        }
     }
 
     func syncNow() {
@@ -119,5 +153,16 @@ final class AppState: ObservableObject {
                 self?.syncNow()
             }
         }
+    }
+
+    private func refreshLaunchAtLoginStatus() {
+        launchAtLoginSupported = Bundle.main.bundleURL.pathExtension == "app"
+        guard launchAtLoginSupported else {
+            launchAtLoginEnabled = false
+            return
+        }
+
+        let status = SMAppService.mainApp.status
+        launchAtLoginEnabled = status == .enabled || status == .requiresApproval
     }
 }

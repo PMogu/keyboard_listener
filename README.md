@@ -44,4 +44,12 @@ cd macos-app
 swift build
 ```
 
-首次运行后需要授予 Accessibility 权限，客户端会把键盘事件元数据写入本地 SQLite，并按批次同步到后端。
+如果你想生成可双击启动的 `.app`：
+
+```bash
+cd macos-app
+./build_app.sh
+open "dist/Keyboard Listener.app"
+```
+
+首次运行后需要授予 Accessibility 权限，客户端默认会在启动后立刻开始监听；客户端只统计会直接改变文本的按键，例如字母、数字、符号、空格、退格和回车，不统计修饰键、导航键和系统控制键。事件仍会写入本地 SQLite，并按批次同步到后端。打包后的 `.app` 可以放进 `/Applications`，也可以在应用内打开 `Open at Login`，或手动加入 macOS 的登录项。

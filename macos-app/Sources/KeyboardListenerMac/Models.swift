@@ -33,6 +33,7 @@ struct AppConfig {
     var deviceID: String?
     var deviceToken: String?
     var deviceName: String
+    var startListeningOnLaunch: Bool
 }
 
 struct RegisterDeviceRequest: Codable {
@@ -40,6 +41,13 @@ struct RegisterDeviceRequest: Codable {
     let platform: String
     let appVersion: String
     let bootstrapSecret: String
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case platform
+        case appVersion = "app_version"
+        case bootstrapSecret = "bootstrap_secret"
+    }
 }
 
 struct RegisterDeviceResponse: Codable {
