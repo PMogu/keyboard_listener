@@ -5,104 +5,106 @@ struct DashboardView: View {
     @ObservedObject var appState: AppState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Keyboard Listener")
-                        .font(.largeTitle)
-                    Text(appState.isListening ? "Capturing keyboard metadata" : "Capture paused")
-                        .foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Keyboard Listener")
+                            .font(.largeTitle)
+                        Text(appState.isListening ? "Capturing keyboard metadata" : "Capture paused")
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(appState.isListening ? "Pause" : "Start") {
+                        appState.toggleListening()
+                    }
+                    .keyboardShortcut(.defaultAction)
                 }
-                Spacer()
-                Button(appState.isListening ? "Pause" : "Start") {
-                    appState.toggleListening()
+
+                HStack(spacing: 16) {
+                    StatCard(title: "Today", value: "\(appState.todayCount)", subtitle: "Captured key events")
+                    StatCard(title: "Pending", value: "\(appState.pendingUploadCount)", subtitle: "Waiting to sync")
+                    StatCard(title: "Range Total", value: "\(appState.remoteStatsTotal)", subtitle: appState.selectedRange.chartTitle)
+                    StatCard(
+                        title: "Access",
+                        value: appState.hasAccessibilityAccess ? "Granted" : "Needed",
+                        subtitle: "Accessibility permission"
+                    )
                 }
-                .keyboardShortcut(.defaultAction)
-            }
 
-            HStack(spacing: 16) {
-                StatCard(title: "Today", value: "\(appState.todayCount)", subtitle: "Captured key events")
-                StatCard(title: "Pending", value: "\(appState.pendingUploadCount)", subtitle: "Waiting to sync")
-                StatCard(title: "Range Total", value: "\(appState.remoteStatsTotal)", subtitle: appState.selectedRange.chartTitle)
-                StatCard(
-                    title: "Access",
-                    value: appState.hasAccessibilityAccess ? "Granted" : "Needed",
-                    subtitle: "Accessibility permission"
-                )
-            }
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Picker("Range", selection: Binding(
+                            get: { appState.selectedRange },
+                            set: { appState.selectRange($0) }
+                        )) {
+                            ForEach(DashboardRange.allCases) { range in
+                                Text(range.title).tag(range)
+                            }
+                        }
+                        .pickerStyle(.segmented)
 
-            GroupBox {
-                VStack(alignment: .leading, spacing: 16) {
-                    Picker("Range", selection: Binding(
-                        get: { appState.selectedRange },
-                        set: { appState.selectRange($0) }
-                    )) {
-                        ForEach(DashboardRange.allCases) { range in
-                            Text(range.title).tag(range)
+                        Text(appState.remoteStatsStatus)
+                            .foregroundStyle(.secondary)
+
+                        if appState.remoteBuckets.isEmpty {
+                            EmptyChartState(
+                                title: "No synced events",
+                                subtitle: "Sync your local data to see the \(appState.selectedRange.chartTitle) trend."
+                            )
+                            .frame(maxWidth: .infinity, minHeight: 220)
+                        } else {
+                            Chart(appState.remoteBuckets) { bucket in
+                                BarMark(
+                                    x: .value(xAxisTitle, bucket.bucketStart),
+                                    y: .value("Count", bucket.count)
+                                )
+                                .foregroundStyle(.blue.gradient)
+                            }
+                            .frame(height: 240)
                         }
                     }
-                    .pickerStyle(.segmented)
+                } label: {
+                    Text(appState.selectedRange.chartTitle)
+                }
 
-                    Text(appState.remoteStatsStatus)
-                        .foregroundStyle(.secondary)
-
-                    if appState.remoteBuckets.isEmpty {
+                GroupBox("Top Keys") {
+                    if appState.topKeyStats.isEmpty {
                         EmptyChartState(
-                            title: "No synced events",
-                            subtitle: "Sync your local data to see the \(appState.selectedRange.chartTitle) trend."
+                            title: "No key distribution yet",
+                            subtitle: "Top keys will appear here after synced events accumulate."
                         )
                         .frame(maxWidth: .infinity, minHeight: 220)
                     } else {
-                        Chart(appState.remoteBuckets) { bucket in
+                        Chart(appState.topKeyStats) { item in
                             BarMark(
-                                x: .value(xAxisTitle, bucket.bucketStart),
-                                y: .value("Count", bucket.count)
+                                x: .value("Key", keyLabel(for: item.keyCode)),
+                                y: .value("Count", item.count)
                             )
-                            .foregroundStyle(.blue.gradient)
+                            .foregroundStyle(.green.gradient)
                         }
                         .frame(height: 240)
                     }
                 }
-            } label: {
-                Text(appState.selectedRange.chartTitle)
-            }
 
-            GroupBox("Top Keys") {
-                if appState.topKeyStats.isEmpty {
-                    EmptyChartState(
-                        title: "No key distribution yet",
-                        subtitle: "Top keys will appear here after synced events accumulate."
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 220)
-                } else {
-                    Chart(appState.topKeyStats) { item in
-                        BarMark(
-                            x: .value("Key", keyLabel(for: item.keyCode)),
-                            y: .value("Count", item.count)
-                        )
-                        .foregroundStyle(.green.gradient)
+                GroupBox("Sync") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(appState.syncStatus)
+                        if let error = appState.lastError {
+                            Text(error)
+                                .foregroundStyle(.red)
+                        }
+                        Button("Sync Now") {
+                            appState.syncNow()
+                        }
                     }
-                    .frame(height: 240)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-            }
 
-            GroupBox("Sync") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(appState.syncStatus)
-                    if let error = appState.lastError {
-                        Text(error)
-                            .foregroundStyle(.red)
-                    }
-                    Button("Sync Now") {
-                        appState.syncNow()
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                SettingsView(appState: appState)
             }
-
-            SettingsView(appState: appState)
+            .padding(24)
         }
-        .padding(24)
         .frame(minWidth: 820, minHeight: 780)
     }
 
