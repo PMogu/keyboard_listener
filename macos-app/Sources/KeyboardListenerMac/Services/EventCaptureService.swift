@@ -59,7 +59,7 @@ final class EventCaptureService {
         }
 
         let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
-        let flags = Int(event.flags.rawValue)
+        let flags = service.normalizedModifierFlags(from: event.flags)
         let frontmostApp = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         let record = KeyEventRecord(
             id: UUID().uuidString.lowercased(),
@@ -109,5 +109,27 @@ final class EventCaptureService {
         }
 
         return CharacterSet.symbols.contains(scalar)
+    }
+
+    private func normalizedModifierFlags(from flags: CGEventFlags) -> Int {
+        var normalized = 0
+
+        if flags.contains(.maskShift) {
+            normalized |= 1
+        }
+        if flags.contains(.maskAlternate) {
+            normalized |= 2
+        }
+        if flags.contains(.maskControl) {
+            normalized |= 4
+        }
+        if flags.contains(.maskCommand) {
+            normalized |= 8
+        }
+        if flags.contains(.maskAlphaShift) {
+            normalized |= 16
+        }
+
+        return normalized
     }
 }

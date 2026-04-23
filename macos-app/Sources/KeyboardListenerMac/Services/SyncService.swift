@@ -95,6 +95,74 @@ final class SyncService {
         return SyncResult(uploadedCount: result.insertedCount, duplicateCount: result.duplicateCount)
     }
 
+    func fetchSummary(range: DashboardRange) async throws -> StatsSummaryResponse {
+        let config = configStore.load()
+        guard let baseURL = URL(string: config.apiBaseURL) else {
+            throw URLError(.badURL)
+        }
+        guard let token = config.deviceToken else {
+            throw SyncError.missingDeviceRegistration
+        }
+
+        let endTime = Date()
+        let startTime = endTime.addingTimeInterval(-range.duration)
+        var components = URLComponents(url: baseURL.appending(path: "/v1/stats/summary"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "start_time", value: encoderDateString(startTime)),
+            URLQueryItem(name: "end_time", value: encoderDateString(endTime)),
+            URLQueryItem(name: "bucket", value: range.statsBucket),
+        ]
+
+        guard let url = components?.url else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, 200..<300 ~= httpResponse.statusCode else {
+            throw SyncError.statsFailed(String(data: data, encoding: .utf8) ?? "Unexpected response")
+        }
+
+        return try decoder.decode(StatsSummaryResponse.self, from: data)
+    }
+
+    func fetchKeyCodeStats(range: DashboardRange, limit: Int = 10) async throws -> KeyCodeStatsResponse {
+        let config = configStore.load()
+        guard let baseURL = URL(string: config.apiBaseURL) else {
+            throw URLError(.badURL)
+        }
+        guard let token = config.deviceToken else {
+            throw SyncError.missingDeviceRegistration
+        }
+
+        let endTime = Date()
+        let startTime = endTime.addingTimeInterval(-range.duration)
+        var components = URLComponents(url: baseURL.appending(path: "/v1/stats/keycodes"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "start_time", value: encoderDateString(startTime)),
+            URLQueryItem(name: "end_time", value: encoderDateString(endTime)),
+            URLQueryItem(name: "limit", value: "\(limit)"),
+        ]
+
+        guard let url = components?.url else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, 200..<300 ~= httpResponse.statusCode else {
+            throw SyncError.statsFailed(String(data: data, encoding: .utf8) ?? "Unexpected response")
+        }
+
+        return try decoder.decode(KeyCodeStatsResponse.self, from: data)
+    }
+
     private func registerDevice(baseURL: URL, config: AppConfig, appVersion: String) async throws -> RegisterDeviceResponse {
         let requestBody = RegisterDeviceRequest(
             name: config.deviceName,
@@ -114,11 +182,19 @@ final class SyncService {
         }
         return try decoder.decode(RegisterDeviceResponse.self, from: data)
     }
+
+    private func encoderDateString(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
+    }
 }
 
 enum SyncError: LocalizedError {
     case registrationFailed(String)
     case uploadFailed(String)
+    case statsFailed(String)
+    case missingDeviceRegistration
 
     var errorDescription: String? {
         switch self {
@@ -126,6 +202,10 @@ enum SyncError: LocalizedError {
             return "Device registration failed: \(message)"
         case let .uploadFailed(message):
             return "Event upload failed: \(message)"
+        case let .statsFailed(message):
+            return "Stats fetch failed: \(message)"
+        case .missingDeviceRegistration:
+            return "Device not registered yet. Sync once before loading remote stats."
         }
     }
 }

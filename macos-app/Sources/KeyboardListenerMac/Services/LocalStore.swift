@@ -197,7 +197,7 @@ final class LocalStore {
             let rawMinute = string(from: statement, index: 0)
             let count = Int(sqlite3_column_int(statement, 1))
             if let date = dateFormatter.date(from: rawMinute) {
-                buckets.append(EventBucket(minute: date, count: count))
+                buckets.append(EventBucket(bucketStart: date, count: count))
             }
         }
         return buckets

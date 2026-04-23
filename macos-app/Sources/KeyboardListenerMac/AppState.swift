@@ -8,13 +8,17 @@ final class AppState: ObservableObject {
     @Published var isListening = false
     @Published var hasAccessibilityAccess = AccessibilityService.isTrusted()
     @Published var todayCount = 0
-    @Published var recentBuckets: [EventBucket] = []
     @Published var pendingUploadCount = 0
     @Published var syncStatus = "Idle"
     @Published var lastError: String?
     @Published var config: AppConfig
     @Published var launchAtLoginEnabled = false
     @Published var launchAtLoginSupported = false
+    @Published var selectedRange: DashboardRange = .day
+    @Published var remoteBuckets: [EventBucket] = []
+    @Published var topKeyStats: [KeyCodeStat] = []
+    @Published var remoteStatsStatus = "Loading remote stats..."
+    @Published var remoteStatsTotal = 0
 
     private let configStore: ConfigStore
     private let localStore: LocalStore
@@ -38,6 +42,7 @@ final class AppState: ObservableObject {
         refreshSnapshot()
         refreshLaunchAtLoginStatus()
         scheduleSync()
+        loadRemoteStats()
         if config.startListeningOnLaunch {
             startListening()
         }
@@ -115,6 +120,7 @@ final class AppState: ObservableObject {
                 syncStatus = "Syncing..."
                 let result = try await syncService.flushPendingEvents(appVersion: Self.appVersion)
                 refreshSnapshot()
+                await reloadRemoteStats()
                 let lastSyncedText = configStore.lastSyncedAt()?.formatted(date: .abbreviated, time: .shortened) ?? "never"
                 syncStatus = "Synced \(result.uploadedCount) new, \(result.duplicateCount) duplicate. Last sync \(lastSyncedText)."
                 config = configStore.load()
@@ -124,6 +130,12 @@ final class AppState: ObservableObject {
                 syncStatus = "Sync failed"
             }
         }
+    }
+
+    func selectRange(_ range: DashboardRange) {
+        guard selectedRange != range else { return }
+        selectedRange = range
+        loadRemoteStats()
     }
 
     private func persist(event: KeyEventRecord) {
@@ -139,7 +151,6 @@ final class AppState: ObservableObject {
         do {
             let snapshot = try localStore.summarySnapshot()
             todayCount = snapshot.todayCount
-            recentBuckets = snapshot.recentBuckets
             pendingUploadCount = snapshot.pendingUploadCount
         } catch {
             lastError = error.localizedDescription
@@ -152,6 +163,31 @@ final class AppState: ObservableObject {
             Task { @MainActor in
                 self?.syncNow()
             }
+        }
+    }
+
+    private func loadRemoteStats() {
+        Task {
+            await reloadRemoteStats()
+        }
+    }
+
+    private func reloadRemoteStats() async {
+        do {
+            remoteStatsStatus = "Loading \(selectedRange.chartTitle)..."
+            let summary = try await syncService.fetchSummary(range: selectedRange)
+            let keycodes = try await syncService.fetchKeyCodeStats(range: selectedRange)
+            remoteBuckets = summary.buckets.map {
+                EventBucket(bucketStart: $0.bucketStart, count: $0.count)
+            }
+            topKeyStats = keycodes.items.map { KeyCodeStat(keyCode: $0.keyCode, count: $0.count) }
+            remoteStatsTotal = summary.totalEvents
+            remoteStatsStatus = summary.totalEvents == 0 ? "No synced data in this range yet." : "Showing synced data for \(selectedRange.chartTitle)."
+        } catch {
+            remoteBuckets = []
+            topKeyStats = []
+            remoteStatsTotal = 0
+            remoteStatsStatus = error.localizedDescription
         }
     }
 

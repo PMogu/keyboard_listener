@@ -52,4 +52,4 @@ cd macos-app
 open "dist/Keyboard Listener.app"
 ```
 
-首次运行后需要授予 Accessibility 权限，客户端默认会在启动后立刻开始监听；客户端只统计会直接改变文本的按键，例如字母、数字、符号、空格、退格和回车，不统计修饰键、导航键和系统控制键。事件仍会写入本地 SQLite，并按批次同步到后端。打包后的 `.app` 可以放进 `/Applications`，也可以在应用内打开 `Open at Login`，或手动加入 macOS 的登录项。
+首次运行后需要授予 Accessibility 权限，客户端默认会在启动后立刻开始监听；客户端只统计会直接改变文本的按键，例如字母、数字、符号、空格、退格和回车，不统计修饰键、导航键和系统控制键。事件仍会写入本地 SQLite，并按批次同步到后端。Dashboard 提供最近 24 小时 / 7 天 / 30 天的远程趋势图以及 Top 键分布图。打包后的 `.app` 可以放进 `/Applications`，也可以在应用内打开 `Open at Login`，或手动加入 macOS 的登录项。

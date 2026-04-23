@@ -15,10 +15,10 @@ struct PendingUpload: Identifiable {
 }
 
 struct EventBucket: Identifiable {
-    let minute: Date
+    let bucketStart: Date
     let count: Int
 
-    var id: Date { minute }
+    var id: Date { bucketStart }
 }
 
 struct SummarySnapshot {
@@ -34,6 +34,52 @@ struct AppConfig {
     var deviceToken: String?
     var deviceName: String
     var startListeningOnLaunch: Bool
+}
+
+enum DashboardRange: String, CaseIterable, Identifiable {
+    case day
+    case week
+    case month
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .day: return "日"
+        case .week: return "周"
+        case .month: return "月"
+        }
+    }
+
+    var statsBucket: String {
+        switch self {
+        case .day: return "hour"
+        case .week, .month: return "day"
+        }
+    }
+
+    var duration: TimeInterval {
+        switch self {
+        case .day: return 24 * 60 * 60
+        case .week: return 7 * 24 * 60 * 60
+        case .month: return 30 * 24 * 60 * 60
+        }
+    }
+
+    var chartTitle: String {
+        switch self {
+        case .day: return "最近24小时"
+        case .week: return "最近7天"
+        case .month: return "最近30天"
+        }
+    }
+}
+
+struct KeyCodeStat: Identifiable {
+    let keyCode: Int
+    let count: Int
+
+    var id: Int { keyCode }
 }
 
 struct RegisterDeviceRequest: Codable {
@@ -107,4 +153,54 @@ struct EventBatchResponse: Codable {
 struct SyncResult {
     let uploadedCount: Int
     let duplicateCount: Int
+}
+
+struct StatsSummaryResponse: Codable {
+    let startTime: Date
+    let endTime: Date
+    let bucket: String
+    let totalEvents: Int
+    let buckets: [StatsBucketPayload]
+
+    enum CodingKeys: String, CodingKey {
+        case startTime = "start_time"
+        case endTime = "end_time"
+        case bucket
+        case totalEvents = "total_events"
+        case buckets
+    }
+}
+
+struct StatsBucketPayload: Codable {
+    let bucketStart: Date
+    let count: Int
+
+    enum CodingKeys: String, CodingKey {
+        case bucketStart = "bucket_start"
+        case count
+    }
+}
+
+struct KeyCodeStatsResponse: Codable {
+    let startTime: Date
+    let endTime: Date
+    let totalEvents: Int
+    let items: [KeyCodeStatPayload]
+
+    enum CodingKeys: String, CodingKey {
+        case startTime = "start_time"
+        case endTime = "end_time"
+        case totalEvents = "total_events"
+        case items
+    }
+}
+
+struct KeyCodeStatPayload: Codable {
+    let keyCode: Int
+    let count: Int
+
+    enum CodingKeys: String, CodingKey {
+        case keyCode = "key_code"
+        case count
+    }
 }
