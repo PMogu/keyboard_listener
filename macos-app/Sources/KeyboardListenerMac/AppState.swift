@@ -19,14 +19,23 @@ final class AppState: ObservableObject {
     @Published var topKeyStats: [KeyCodeStat] = []
     @Published var remoteStatsStatus = "Loading remote stats..."
     @Published var remoteStatsTotal = 0
+    @Published var hideRangeStart: Date
+    @Published var hideRangeEnd: Date
+    @Published var hideRangeStatus = "Only synced backend data will be marked as 未记录."
+    @Published var isHidingRange = false
 
     private let configStore: ConfigStore
     private let localStore: LocalStore
     private let eventCaptureService = EventCaptureService()
     private let syncService: SyncService
     private var syncTimer: Timer?
+    private let maxHideRangeDuration: TimeInterval = 24 * 60 * 60
 
     init() {
+        let roundedNow = Self.roundedToMinute(.now)
+        self.hideRangeEnd = roundedNow
+        self.hideRangeStart = Calendar.current.date(byAdding: .minute, value: -1, to: roundedNow) ?? roundedNow
+
         let configStore = ConfigStore()
         self.configStore = configStore
         self.config = configStore.load()
@@ -138,6 +147,50 @@ final class AppState: ObservableObject {
         loadRemoteStats()
     }
 
+    var hideRangeValidationMessage: String? {
+        if config.deviceToken == nil {
+            return "Sync once before hiding synced data."
+        }
+        if hideRangeEnd <= hideRangeStart {
+            return "End time must be later than start time."
+        }
+        if hideRangeEnd.timeIntervalSince(hideRangeStart) > maxHideRangeDuration {
+            return "A single hide range cannot exceed 24 hours."
+        }
+        return nil
+    }
+
+    var canHideSelectedRange: Bool {
+        hideRangeValidationMessage == nil && !isHidingRange
+    }
+
+    func hideSelectedRange() {
+        guard let validationMessage = hideRangeValidationMessage else {
+            let start = hideRangeStart
+            let end = hideRangeEnd
+            isHidingRange = true
+            hideRangeStatus = "Hiding synced events..."
+            lastError = nil
+
+            Task {
+                do {
+                    let result = try await syncService.hideRange(start: start, end: end)
+                    await reloadRemoteStats()
+                    hideRangeStatus = "Hidden \(result.updatedCount) synced events from \(formatHideRangeDate(start)) to \(formatHideRangeDate(end))."
+                    syncStatus = "Hide completed"
+                } catch {
+                    lastError = error.localizedDescription
+                    hideRangeStatus = "Hide failed"
+                }
+                isHidingRange = false
+            }
+            return
+        }
+
+        lastError = validationMessage
+        hideRangeStatus = "Hide failed"
+    }
+
     private func persist(event: KeyEventRecord) {
         do {
             try localStore.insert(event: event)
@@ -200,5 +253,15 @@ final class AppState: ObservableObject {
 
         let status = SMAppService.mainApp.status
         launchAtLoginEnabled = status == .enabled || status == .requiresApproval
+    }
+
+    private func formatHideRangeDate(_ date: Date) -> String {
+        date.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private static func roundedToMinute(_ date: Date) -> Date {
+        let calendar = Calendar.current
+        let withoutSeconds = calendar.date(bySetting: .second, value: 0, of: date) ?? date
+        return calendar.date(bySetting: .nanosecond, value: 0, of: withoutSeconds) ?? withoutSeconds
     }
 }

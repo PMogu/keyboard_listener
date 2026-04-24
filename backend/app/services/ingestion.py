@@ -1,6 +1,7 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models.ingestion_batch import IngestionBatch
@@ -54,3 +55,29 @@ def ingest_event_batch(
     )
     db.commit()
     return inserted_count, duplicate_count
+
+
+def hide_event_range(
+    db: Session,
+    *,
+    device_id: UUID,
+    start_time: datetime,
+    end_time: datetime,
+) -> int:
+    if start_time.tzinfo is None:
+        start_time = start_time.replace(tzinfo=timezone.utc)
+    if end_time.tzinfo is None:
+        end_time = end_time.replace(tzinfo=timezone.utc)
+
+    result = db.execute(
+        update(KeyEvent)
+        .where(
+            KeyEvent.device_id == device_id,
+            KeyEvent.occurred_at >= start_time,
+            KeyEvent.occurred_at < end_time,
+            KeyEvent.key_code != -1,
+        )
+        .values(key_code=-1)
+    )
+    db.commit()
+    return result.rowcount or 0

@@ -22,3 +22,14 @@ class EventBatchResponse(BaseModel):
     received_count: int
     inserted_count: int
     duplicate_count: int
+
+
+class HideRangeRequest(BaseModel):
+    start_time: datetime
+    end_time: datetime
+
+
+class HideRangeResponse(BaseModel):
+    start_time: datetime
+    end_time: datetime
+    updated_count: int

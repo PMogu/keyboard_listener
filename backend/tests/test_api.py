@@ -196,3 +196,140 @@ def test_summary_supports_day_buckets_and_keycode_stats(client):
     assert keycode_body["total_events"] == 3
     assert keycode_body["items"][0]["key_code"] == 12
     assert keycode_body["items"][0]["count"] == 2
+
+
+def test_hide_range_marks_only_current_device_events_as_unrecorded(client):
+    first_device = register_device(client)
+    second_device = register_device(client)
+    first_headers = {"Authorization": f"Bearer {first_device['device_token']}"}
+    second_headers = {"Authorization": f"Bearer {second_device['device_token']}"}
+    now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    hidden_start = now - timedelta(minutes=2)
+    hidden_middle = hidden_start + timedelta(minutes=1)
+    hidden_end = hidden_start + timedelta(minutes=2)
+
+    first_upload = client.post(
+        "/v1/events/batch",
+        headers=first_headers,
+        json={
+            "batch_id": "batch-hide-first",
+            "events": [
+                {
+                    "event_id": "evt-hide-1",
+                    "occurred_at": hidden_start.isoformat(),
+                    "key_code": 12,
+                    "modifier_flags": 0,
+                    "event_type": "keyDown",
+                    "source_app": "com.apple.TextEdit",
+                },
+                {
+                    "event_id": "evt-hide-2",
+                    "occurred_at": hidden_middle.isoformat(),
+                    "key_code": 13,
+                    "modifier_flags": 0,
+                    "event_type": "keyDown",
+                    "source_app": "com.apple.TextEdit",
+                },
+            ],
+        },
+    )
+    assert first_upload.status_code == 200
+
+    second_upload = client.post(
+        "/v1/events/batch",
+        headers=second_headers,
+        json={
+            "batch_id": "batch-hide-second",
+            "events": [
+                {
+                    "event_id": "evt-hide-other-device",
+                    "occurred_at": hidden_middle.isoformat(),
+                    "key_code": 14,
+                    "modifier_flags": 0,
+                    "event_type": "keyDown",
+                    "source_app": "com.apple.TextEdit",
+                }
+            ],
+        },
+    )
+    assert second_upload.status_code == 200
+
+    first_hide = client.post(
+        "/v1/events/hide-range",
+        headers=first_headers,
+        json={
+            "start_time": hidden_start.isoformat(),
+            "end_time": hidden_end.isoformat(),
+        },
+    )
+    assert first_hide.status_code == 200
+    assert first_hide.json()["updated_count"] == 2
+
+    second_hide = client.post(
+        "/v1/events/hide-range",
+        headers=first_headers,
+        json={
+            "start_time": hidden_start.isoformat(),
+            "end_time": hidden_end.isoformat(),
+        },
+    )
+    assert second_hide.status_code == 200
+    assert second_hide.json()["updated_count"] == 0
+
+    first_keycodes = client.get(
+        "/v1/stats/keycodes",
+        headers=first_headers,
+        params={
+            "start_time": (hidden_start - timedelta(minutes=1)).isoformat(),
+            "end_time": (hidden_end + timedelta(minutes=1)).isoformat(),
+            "limit": 10,
+        },
+    )
+    assert first_keycodes.status_code == 200
+    first_items = first_keycodes.json()["items"]
+    assert first_items[0]["key_code"] == -1
+    assert first_items[0]["count"] == 2
+
+    first_summary = client.get(
+        "/v1/stats/summary",
+        headers=first_headers,
+        params={
+            "start_time": (hidden_start - timedelta(minutes=1)).isoformat(),
+            "end_time": (hidden_end + timedelta(minutes=1)).isoformat(),
+        },
+    )
+    assert first_summary.status_code == 200
+    assert first_summary.json()["total_events"] == 2
+
+    second_keycodes = client.get(
+        "/v1/stats/keycodes",
+        headers=second_headers,
+        params={
+            "start_time": (hidden_start - timedelta(minutes=1)).isoformat(),
+            "end_time": (hidden_end + timedelta(minutes=1)).isoformat(),
+            "limit": 10,
+        },
+    )
+    assert second_keycodes.status_code == 200
+    second_items = second_keycodes.json()["items"]
+    assert second_items[0]["key_code"] == 14
+    assert second_items[0]["count"] == 1
+
+
+def test_hide_range_rejects_more_than_24_hours(client):
+    device = register_device(client)
+    headers = {"Authorization": f"Bearer {device['device_token']}"}
+    start_time = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    end_time = start_time + timedelta(hours=24, minutes=1)
+
+    response = client.post(
+        "/v1/events/hide-range",
+        headers=headers,
+        json={
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Single hide range cannot exceed 24 hours."

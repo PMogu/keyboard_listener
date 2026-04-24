@@ -163,6 +163,30 @@ final class SyncService {
         return try decoder.decode(KeyCodeStatsResponse.self, from: data)
     }
 
+    func hideRange(start: Date, end: Date) async throws -> HideRangeResponse {
+        let config = configStore.load()
+        guard let baseURL = URL(string: config.apiBaseURL) else {
+            throw URLError(.badURL)
+        }
+        guard let token = config.deviceToken else {
+            throw SyncError.missingDeviceRegistration
+        }
+
+        let payload = HideRangeRequest(startTime: start, endTime: end)
+        var request = URLRequest(url: baseURL.appending(path: "/v1/events/hide-range"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try encoder.encode(payload)
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, 200..<300 ~= httpResponse.statusCode else {
+            throw SyncError.hideFailed(String(data: data, encoding: .utf8) ?? "Unexpected response")
+        }
+
+        return try decoder.decode(HideRangeResponse.self, from: data)
+    }
+
     private func registerDevice(baseURL: URL, config: AppConfig, appVersion: String) async throws -> RegisterDeviceResponse {
         let requestBody = RegisterDeviceRequest(
             name: config.deviceName,
@@ -194,6 +218,7 @@ enum SyncError: LocalizedError {
     case registrationFailed(String)
     case uploadFailed(String)
     case statsFailed(String)
+    case hideFailed(String)
     case missingDeviceRegistration
 
     var errorDescription: String? {
@@ -204,6 +229,8 @@ enum SyncError: LocalizedError {
             return "Event upload failed: \(message)"
         case let .statsFailed(message):
             return "Stats fetch failed: \(message)"
+        case let .hideFailed(message):
+            return "Hide range failed: \(message)"
         case .missingDeviceRegistration:
             return "Device not registered yet. Sync once before loading remote stats."
         }

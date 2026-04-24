@@ -150,6 +150,28 @@ struct EventBatchResponse: Codable {
     }
 }
 
+struct HideRangeRequest: Codable {
+    let startTime: Date
+    let endTime: Date
+
+    enum CodingKeys: String, CodingKey {
+        case startTime = "start_time"
+        case endTime = "end_time"
+    }
+}
+
+struct HideRangeResponse: Codable {
+    let startTime: Date
+    let endTime: Date
+    let updatedCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case startTime = "start_time"
+        case endTime = "end_time"
+        case updatedCount = "updated_count"
+    }
+}
+
 struct SyncResult {
     let uploadedCount: Int
     let duplicateCount: Int
